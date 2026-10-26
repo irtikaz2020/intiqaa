@@ -2,12 +2,14 @@
   'use strict';
   var Q = window.Iq, el = Q.el, say = Q.say;
   var app = document.getElementById('app'), bt = document.getElementById('bt'), tg = document.getElementById('tg'), rm = document.getElementById('rm');
-  var rooms = [], posts = [], site = { criteria: [], contact: {} };
+  var rooms = [], posts = [], segs = [], site = { criteria: [], contact: {}, crisis: [] };
   if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('sw.js').catch(function () {}); } catch (e) {} }
   var BASE = '#2b2623';
 
   function room(id) { return rooms.filter(function (r) { return r.id === id; })[0]; }
   function post(id) { return posts.filter(function (p) { return p.id === id; })[0]; }
+  function seg(id) { return segs.filter(function (g) { return g.id === id; })[0]; }
+  function segsFor(rid) { return segs.filter(function (g) { return !g.room || g.room === rid; }); }
   function vis() { return posts.filter(function (p) { return !p.hidden; }); }
   function inRoom(id) { return vis().filter(function (p) { return p.room === id; }).sort(byDate); }
   function byDate(a, b) { return (b.date || '').localeCompare(a.date || ''); }
@@ -28,20 +30,48 @@
   }
   function excerpt(t, n) { t = String(t || ''); return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : t; }
 
+
+  function crisisBox() {
+    var L = site.crisis || [];
+    if (!L.length) return null;
+    return el('div', { class: 'crisis' }, el('b', { text: site.crisisTitle || 'لو احتجت مساعدة الآن' }),
+      el('ul', null, L.map(function (c) { return el('li', null, c.name + ': ', el('a', { href: 'tel:' + String(c.number).replace(/\D/g, ''), dir: 'ltr', text: c.number }), c.note ? ' — ' + c.note : ''); })),
+      site.crisisFoot ? el('p', { class: 'hint', text: site.crisisFoot }) : null);
+  }
+  function safetyNote(r, withBox) {
+    if (!r || !r.safety) return null;
+    var box = el('div', null, el('div', { class: 'note', text: site.disclaimer || '' }));
+    var cbx = withBox ? crisisBox() : null; if (cbx) box.appendChild(cbx);
+    box.appendChild(el('p', { class: 'hint' }, el('a', { href: '#/help', text: 'طلب مساعدة عاجلة' })));
+    return box;
+  }
+  function tableEl(body) {
+    var rows = String(body || '').split(/\r?\n/).filter(function (l) { return l.trim(); }).map(function (l) { return l.split('|').map(function (c) { return c.trim(); }); });
+    if (!rows.length) return null;
+    var w = Math.max.apply(null, rows.map(function (r) { return r.length; }));
+    function cells(r, tag) { var o = []; for (var i = 0; i < w; i++) o.push(el(tag, { text: r[i] || '' })); return o; }
+    return el('div', { class: 'tbl' }, el('table', null, el('thead', null, el('tr', null, cells(rows[0], 'th'))), el('tbody', null, rows.slice(1).map(function (r) { return el('tr', null, cells(r, 'td')); }))));
+  }
+  function contactBox() {
+    var c = site.contact || {}; if (!site.contactBox || (!c.email && !c.telegram)) return null;
+    return el('div', { class: 'panel' }, el('h3', { text: site.contactTitle || 'تواصل معنا' }), el('p', { class: 'hint', text: site.contactNote || '' }),
+      el('div', { class: 'row' }, c.email ? el('a', { class: 'btn', href: 'mailto:' + c.email, text: 'البريد' }) : null, c.telegram ? el('a', { class: 'btn', href: c.telegram, target: '_blank', rel: 'noopener noreferrer', text: 'تيليجرام' }) : null));
+  }
+
   function card(p) {
     var r = room(p.room) || {}, c = col(r);
     var u = p.img ? Q.safeUrl(p.img) : '';
     return el('article', { class: 'post', style: '--c:' + c },
-      el('div', { class: 'meta' }, el('a', { href: '#/r/' + p.room, text: (r.emoji || '') + ' ' + (r.name || '') }), p.date ? ' · ' + fmtDate(p.date) : '', p.cat && r.cats ? ' · ' + ((r.cats.filter(function (x) { return x.id === p.cat; })[0] || {}).name || '') : ''),
+      el('div', { class: 'meta' }, el('a', { href: '#/r/' + p.room, text: (r.emoji || '') + ' ' + (r.name || '') }), p.date ? ' · ' + fmtDate(p.date) : '', p.cat && r.cats ? ' · ' + ((r.cats.filter(function (x) { return x.id === p.cat; })[0] || {}).name || '') : '', p.segment && seg(p.segment) ? [' · ', el('a', { href: '#/seg/' + p.segment, text: 'فقرة: ' + seg(p.segment).name })] : null),
       p.title ? el('h3', null, el('a', { href: '#/post/' + p.id, text: p.title })) : null,
-      u && !p.body ? el('a', { href: '#/post/' + p.id }, el('img', { class: 'cut', src: u, alt: p.title || 'قصاصة', loading: 'lazy' })) : el('div', { class: 'ex' + (r.type === 'verse' ? ' verse' : ''), text: excerpt(p.body, 220) }),
+      u && !p.body ? el('a', { href: '#/post/' + p.id }, el('img', { class: 'cut', src: u, alt: p.title || 'قصاصة', loading: 'lazy' })) : el('div', { class: 'ex' + (r.type === 'verse' ? ' verse' : ''), text: r.type === 'table' ? 'جدول' + (p.title ? ': ' + p.title : '') : excerpt(p.body, 220) }),
       srcLine(p));
   }
 
   /* ---------- الصفحات ---------- */
   function home() {
     theme(null);
-    var box = el('div', null, el('div', { class: 'panel' }, el('h2', { text: 'ما هو انتقاء؟' }), el('p', { text: site.about || '' })));
+    var box = el('div', null, el('div', { class: 'panel' }, el('h2', { text: site.aboutTitle || 'ما هو انتقاء؟' }), el('p', { text: site.about || '' })));
     box.appendChild(el('div', { class: 'rooms' }, rooms.slice().sort(function (a, b) { return (a.order || 0) - (b.order || 0); }).map(function (r) {
       var n = inRoom(r.id).length;
       return el('a', { class: 'room' + (r.status === 'soon' ? ' soon' : ''), href: '#/r/' + r.id, style: '--c:' + col(r) },
@@ -65,13 +95,27 @@
         return el('button', { class: 'chip', type: 'button', 'aria-current': catF === c.id ? 'true' : null, text: c.name, onclick: function () { catF = c.id; render(); } });
       })));
     }
-    if (r.id === 'tiryaq') box.appendChild(el('p', null, el('a', { class: 'btn', href: '#/ask', text: 'عندك مشكلة أو سؤال؟' })));
+    var sg = segsFor(r.id).filter(function (g) { return all.some(function (p) { return p.segment === g.id; }); });
+    if (sg.length) box.appendChild(el('div', { class: 'row', style: 'margin:8px 0' }, el('span', { class: 'meta', text: 'الفقرات:' }), sg.map(function (g) { return el('a', { class: 'chip', href: '#/seg/' + g.id, text: (g.emoji || '') + ' ' + g.name }); })));
+    if (r.askLink) box.appendChild(el('p', null, el('a', { class: 'btn', href: '#/ask', text: r.askLink })));
     var shown = all.filter(function (p) { return !catF || p.cat === catF; });
     if (r.type === 'image' && shown.length) box.appendChild(el('div', { class: 'grid' }, shown.map(card)));
     else shown.forEach(function (p) { box.appendChild(card(p)); });
     if (!shown.length) box.appendChild(el('div', { class: 'note', text: r.status === 'soon' ? 'هذا المكان قادم قريباً.' : 'لا نصوص هنا بعد.' }));
-    if (r.id === 'tiryaq') box.appendChild(el('div', { class: 'note', text: site.disclaimer || '' }));
+    var sn = safetyNote(r, false); if (sn) box.appendChild(sn);
     return box;
+  }
+  function segPage(id) {
+    var g = seg(id); if (!g) return notFound();
+    var r = g.room ? room(g.room) : null; theme(r);
+    var list = vis().filter(function (p) { return p.segment === id; }).sort(byDate);
+    var box = el('div', null, el('h2', { text: (g.emoji || '') + ' فقرة: ' + g.name, style: 'margin-top:14px' }), g.desc ? el('p', { class: 'hint', text: g.desc }) : null);
+    if (list.length) list.forEach(function (p) { box.appendChild(card(p)); }); else box.appendChild(el('div', { class: 'note', text: 'لا نصوص في هذه الفقرة بعد.' }));
+    return box;
+  }
+  function helpPage() {
+    theme(null);
+    return el('div', null, el('div', { class: 'panel' }, el('h2', { text: 'طلب مساعدة عاجلة' }), el('p', { text: site.helpText || '' }), crisisBox(), el('div', { class: 'note', text: site.disclaimer || '' })));
   }
   function postPage(id) {
     var p = post(id); if (!p || p.hidden) return notFound();
@@ -80,7 +124,8 @@
     var box = el('div', null, p.title ? el('h2', { text: p.title, style: 'margin-top:14px' }) : null,
       el('div', { class: 'meta' }, el('a', { href: '#/r/' + p.room, text: (r.emoji || '') + ' ' + (r.name || '') }), p.date ? ' · ' + fmtDate(p.date) : ''),
       u ? el('img', { class: 'cut', src: u, alt: p.title || 'قصاصة', style: 'margin-top:12px' }) : null,
-      p.body ? el('div', { class: 'body' + (r.type === 'verse' ? ' verse' : ''), text: p.body }) : null, srcLine(p));
+      p.segment && seg(p.segment) ? el('div', { class: 'meta' }, el('a', { href: '#/seg/' + p.segment, text: 'فقرة: ' + seg(p.segment).name })) : null,
+      p.body ? (r.type === 'table' ? tableEl(p.body) : el('div', { class: 'body' + (r.type === 'verse' ? ' verse' : ''), text: p.body })) : null, srcLine(p));
     box.appendChild(el('div', { class: 'row', style: 'margin-top:14px' }, el('button', { class: 'btn', type: 'button', text: 'مشاركة', onclick: function () {
       var link = location.href;
       if (navigator.share) navigator.share({ title: p.title || r.name, text: excerpt(p.body, 140), url: link }).catch(function () {});
@@ -90,7 +135,8 @@
       var t = (p.body || '') + (srcLine(p) ? '\n— ' + [p.author, p.book ? '«' + p.book + '»' : ''].filter(Boolean).join(' — ') : '');
       if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () { say('نُسخ النص.'); }, function () { say('تعذّر النسخ.', true); }); else say('تعذّر النسخ.', true);
     } }), el('a', { class: 'btn', href: '#/r/' + p.room, text: 'المزيد في ' + (r.name || '') })));
-    if (p.room === 'tiryaq') box.appendChild(el('div', { class: 'note', text: site.disclaimer || '' }));
+    if (r.type === 'table') box.appendChild(el('p', null, el('button', { class: 'btn', type: 'button', text: 'طباعة', onclick: function () { window.print(); } })));
+    var sn = safetyNote(r, !!p.sensitive); if (sn) box.appendChild(sn);
     return box;
   }
   function searchPage(q) {
@@ -101,14 +147,14 @@
     return box;
   }
   function askPage() {
-    theme(room('tiryaq')); var c = site.contact || {};
+    theme(room(site.askRoom || '')); var c = site.contact || {};
     return el('div', null, el('div', { class: 'panel' }, el('h2', { text: 'الأسئلة' }), el('p', { text: site.askNote || '' }),
       el('div', { class: 'row' }, c.email ? el('a', { class: 'btn', href: 'mailto:' + c.email, text: 'راسلنا بالبريد' }) : null, c.telegram ? el('a', { class: 'btn', href: c.telegram, target: '_blank', rel: 'noopener noreferrer', text: 'تيليجرام' }) : null)),
       el('div', { class: 'note', text: site.disclaimer || '' }));
   }
   function standardsPage() {
     theme(null);
-    return el('div', null, el('div', { class: 'panel' }, el('h2', { text: 'معايير الانتقاء' }), el('ol', null, (site.criteria || []).map(function (t) { return el('li', { text: t }); })),
+    return el('div', null, el('div', { class: 'panel' }, el('h2', { text: site.standardsTitle || 'معايير الانتقاء' }), el('ol', null, (site.criteria || []).map(function (t) { return el('li', { text: t }); })),
       el('p', { class: 'hint', text: 'هذه المعايير تعبّر عن رؤية صاحب الموقع، وقد يخالفه فيها غيره. من رأى خطأ في نص أو نسبة فليراسلنا.' })),
       el('div', { class: 'panel' }, el('h3', { text: 'الخصوصية' }), el('p', { text: 'لا حسابات ولا تتبّع ولا خادم. الخطوط تُحمَّل من Google Fonts. الموقع لا يجمع بياناتك.' }), el('p', { class: 'hint', text: 'صيغة كتبها مساعد ذكاء اصطناعي وليست استشارة قانونية.' })));
   }
@@ -118,14 +164,14 @@
   function render() {
     var p = location.hash.replace(/^#\/?/, '').split('/'), a = p[1] ? decodeURIComponent(p.slice(1).join('/')) : '', v;
     if (p[0] === 'r') v = roomPage(a); else if (p[0] === 'post') v = postPage(a); else if (p[0] === 'search') v = searchPage(a);
-    else if (p[0] === 'ask') v = askPage(); else if (p[0] === 'standards') v = standardsPage(); else v = home();
-    app.textContent = ''; app.appendChild(v);
+    else if (p[0] === 'ask') v = askPage(); else if (p[0] === 'seg') v = segPage(a); else if (p[0] === 'help') v = helpPage(); else if (p[0] === 'standards') v = standardsPage(); else v = home();
+    app.textContent = ''; app.appendChild(v); var cb = contactBox(); if (cb) app.appendChild(cb);
     var ir = Q.safeUrl(site.irtikaz || '');
-    app.appendChild(el('footer', null, el('div', { class: 'row', style: 'justify-content:center;gap:16px;margin-bottom:8px' }, el('a', { href: '#/', text: 'الرئيسية' }), el('a', { href: '#/standards', text: 'معايير الانتقاء' })),
+    app.appendChild(el('footer', null, el('div', { class: 'row', style: 'justify-content:center;gap:16px;margin-bottom:8px' }, el('a', { href: '#/', text: 'الرئيسية' }), el('a', { href: '#/standards', text: site.standardsTitle || 'معايير الانتقاء' }), site.crisis && site.crisis.length ? el('a', { href: '#/help', text: 'طلب مساعدة عاجلة' }) : null),
       'أُنشئ بواسطة ', ir ? el('a', { href: ir, target: '_blank', rel: 'noopener', text: 'ارتكاز' }) : 'ارتكاز'));
   }
   window.addEventListener('hashchange', function () { catF = ''; window.scrollTo(0, 0); render(); });
-  Promise.all([Q.load('rooms.json', { rooms: [] }), Q.load('posts.json', { posts: [] }), Q.load('site.json', site)]).then(function (r) {
-    rooms = r[0].rooms || []; posts = r[1].posts || []; site = r[2] || site; render();
+  Promise.all([Q.load('rooms.json', { rooms: [] }), Q.load('posts.json', { posts: [] }), Q.load('site.json', site), Q.load('segments.json', { segments: [] })]).then(function (r) {
+    rooms = r[0].rooms || []; posts = r[1].posts || []; site = r[2] || site; segs = r[3].segments || []; render();
   });
 })();
