@@ -1,0 +1,10 @@
+{
+ "version": 1,
+ "rooms": [
+  { "id": "tiryaq", "name": "ترياق", "tagline": "علاج أدبي من بطون الكتب", "desc": "لكل مشكلة نفسية أو قلبية أو اجتماعية أو سلوكية أو إيمانية، نشير إلى سطور وفقرات من كتب تعين على فهمها وعلاجها.", "emoji": "🌿", "color": "#2f6f5e", "type": "text", "status": "open", "order": 1,
+    "cats": [ { "id": "nafs", "name": "نفسية" }, { "id": "qalb", "name": "قلبية" }, { "id": "ijtima", "name": "اجتماعية" }, { "id": "suluk", "name": "سلوكية" }, { "id": "iman", "name": "إيمانية" } ] },
+  { "id": "iqtibas", "name": "اقتباس", "tagline": "جمل مؤثرة ومأثورة", "desc": "عبارات ومقولات اخترناها لأثرها ولصدقها، منسوبة إلى قائليها ومصادرها.", "emoji": "❝", "color": "#3d4a8a", "type": "text", "status": "open", "order": 2, "cats": [] },
+  { "id": "iqtisas", "name": "اقتصاص", "tagline": "قصاصات من الكتب نفسها", "desc": "صور مقصوصة من صفحات كتب مختارة، ومعها سطر أو معنى.", "emoji": "✂️", "color": "#8a5a2b", "type": "image", "status": "soon", "order": 3, "cats": [] },
+  { "id": "iqtisar", "name": "اقتصار", "tagline": "شعر ونثر مختصر", "desc": "مقطوعات من الشعر والنثر. (فكرة قيد التجربة، وقد تنتقل إلى مكان آخر.)", "emoji": "🪶", "color": "#8a3d5f", "type": "verse", "status": "soon", "order": 4, "cats": [] }
+ ]
+}
